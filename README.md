@@ -18,19 +18,47 @@ Replace this paragraph with your own summary of what your version does.
 ## How The System Works
 
 Explain your design in plain language.
+Real world recommendation systems evaluate many signals to decide which music fits a listener at a given moment, combining audio characteristics, user intent, listening context, and historical behavior, then continuously refining results through feedback and pattern recognition. My current version will focus on modeling the decision logic behind this process before introducing learning. For every song, the system will ask: “How well does this song match the listener’s current headspace?” The system will operate in two stages: first a scoring rule, where each song will be independently evaluated using weighted audio features such as energy, acousticness, mood alignment, genre similarity, and inferred rhythm preferences; and second a ranking rule, which will organize the highest scoring songs into a balanced recommendation list by resolving close scores, encouraging artist variety, and maintaining smooth tempo flow. Instead of filtering songs out, the design will prioritize overall vibe similarity and listening experience, reflecting how modern platforms favor flexible personalization and playlist coherence over rigid genre matching.
 
 Some prompts to answer:
 
 - What features does each `Song` use in your system
-  - For example: genre, mood, energy, tempo
-- What information does your `UserProfile` store
-- How does your `Recommender` compute a score for each song
-- How do you choose which songs to recommend
+Each song uses these features:
+genre
+mood
+energy
+tempo (BPM)
+valence (positivity)
+danceability
+acousticness
+artist (for diversity handling)
+-  `UserProfile` information
+favorite genre
+mood context (multiple moods such as focused, relaxed, late-night)
+target energy range (instead of a single value)
+target valence
+target acousticness
+preference for acoustic vs electronic sound
+-`Recommender` Scoring approach
 
-You can include a simple diagram or bullet list if helpful.
+The  system: 
+compares song attributes with user preferences
+computes a weighted similarity score based on vibe features (energy range matching, acousticness, valence)
+adds contributions for mood matches (direct or mood-family based)
+adds genre similarity as a soft contextual boost
+infers rhythm preference from energy range to evaluate danceability alignment
+applies penalties for repeated artists and large tempo mismatches to maintain diversity and flow
+- Recommendation selection
 
+The system:
+scores every song in the dataset independently
+sorts songs from highest to lowest final score
+applies ranking rules to improve variety and listening coherence
+returns the top k songs as final recommendations
+
+This system may introduce a soft preference bias toward the user’s initial mood and energy range, meaning it can over-reinforce similar “headspace” songs (e.g., always returning similar lofi/focused tracks). It may also under-represent highly contrasting but potentially enjoyable music (like high-energy or emotionally different genres), since exploration is not explicitly modeled beyond soft genre adjacency and penalties.
 ---
-
+![alt text](image.png)
 ## Getting Started
 
 ### Setup
