@@ -59,6 +59,10 @@ returns the top k songs as final recommendations
 This system may introduce a soft preference bias toward the user’s initial mood and energy range, meaning it can over-reinforce similar “headspace” songs (e.g., always returning similar lofi/focused tracks). It may also under-represent highly contrasting but potentially enjoyable music (like high-energy or emotionally different genres), since exploration is not explicitly modeled beyond soft genre adjacency and penalties.
 ---
 ![alt text](image.png)
+![alt text](image-1.png)
+![alt text](image-2.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
 ## Getting Started
 
 ### Setup
@@ -96,25 +100,19 @@ You can add more tests in `tests/test_recommender.py`.
 
 ## Experiments You Tried
 
-Use this section to document the experiments you ran. For example:
+When I reduced the genre weight from 2.0 to 0.5, recommendations became less repetitive and more diverse. Genre stopped dominating the results, and mood and energy had a stronger influence, making the system feel more balanced.
 
-- What happened when you changed the weight on genre from 2.0 to 0.5
-- What happened when you added tempo or valence to the score
-- How did your system behave for different types of users
+Adding tempo and valence made recommendations feel more accurate in terms of emotion and rhythm. However, I noticed that strong weights can still group songs into similar “energy clusters,” which reduces variety.
+
+For different user types, the system works well when preferences are clear, but struggles with conflicting inputs. In those cases, it tends to average signals instead of properly resolving contradictions.
 
 ---
 
 ## Limitations and Risks
 
-Summarize some limitations of your recommender.
-
-Examples:
-
-- It only works on a tiny catalog
-- It does not understand lyrics or language
-- It might over favor one genre or mood
-
-You will go deeper on this in your model card.
+- Small dataset limits diversity and realism  
+- Can still over-favor certain genres or moods  
+- Assumes user preferences stay consistent  
 
 ---
 
