@@ -1,0 +1,214 @@
+✅ Scoring Rule (Evaluate One Song)
+
+Each song receives a score between 0.0 and 1.0.
+
+Layer 1: Vibe Similarity (max 0.50)
+
+Primary listening signal.
+
+We compare continuous audio features between the user preference and the song.
+
+Features and Weights
+Feature	Weight	Reason
+Energy	0.22	Most perceptually noticeable
+Acousticness	0.18	Captures organic vs electronic texture
+Valence	0.10	Emotional tone but subjective
+Updated Matching Logic (IMPORTANT CHANGE)
+
+Since your profile now uses ranges for energy, scoring becomes:
+
+If song value is inside preferred range → full feature score
+If outside → apply distance penalty
+Formula
+
+For each feature:
+
+similarity = weight × (1 − distance_penalty)
+
+Where:
+
+energy uses range distance
+valence/acousticness use absolute distance
+Why first?
+
+Humans react to sound texture and intensity before genre labels.
+
+Layer 2: Mood Match (max 0.25)
+
+Represents explicit user intent.
+
+Updated Input Behavior
+
+Now uses:
+
+mood_context = ["focused", "relaxed", "late-night"]
+
+So mood scoring becomes multi-target matching, not single-value matching.
+
+Rules
+Match with any mood in context → +0.25
+Match with same mood family → +0.12
+No relation → +0
+Mood Families
+MOOD_FAMILIES = {
+    "chill": {"relaxed", "focused", "late-night"},
+    "happy": {"energetic"},
+    "moody": {"intense"}
+}
+Why families?
+
+Language varies, emotional states overlap, and users switch contexts.
+
+Layer 3: Genre Context (max 0.15)
+
+Genre adds cultural familiarity but never blocks discovery.
+
+Rules
+Exact genre → +0.15
+Adjacent genre → +0.07
+No relation → +0
+Example adjacency map
+GENRE_NEIGHBORS = {
+    "lofi": {"ambient", "bedroom pop"},
+    "pop": {"indie pop"},
+    "rock": {"indie rock"}
+}
+
+Genre never eliminates songs.
+
+Layer 4: Secondary Vibe Refinement (max 0.10)
+
+(Previously “tiebreaker”)
+
+Danceability is inferred from energy preference.
+
+Expected Danceability
+
+Now updated to use energy range midpoint:
+
+expected_energy = (energy_min + energy_max) / 2
+expected_danceability = 0.4 + (expected_energy × 0.5)
+Score
+0.10 × (1 − |expected_danceability − song_danceability|)
+Why rename?
+
+This is not a tie rule—it contributes real scoring weight.
+
+⚖️ Penalty Adjustments (Multiplicative)
+
+Penalties modify the final score rather than subtract points.
+
+1. Artist Variety Penalty
+
+If previous recommendation has same artist:
+
+score ×= 0.80
+
+Encourages diversity.
+
+2. Tempo Consistency Penalty
+
+Expected BPM is derived from energy range midpoint.
+
+Expected BPM Mapping
+expected_bpm = 60 + (expected_energy × 100)
+Rule
+
+If:
+
+|song_bpm − expected_bpm| > 40
+
+then:
+
+score ×= 0.90
+Why needed?
+
+Large tempo jumps break playlist flow even if songs individually match preference.
+
+
+## Mental Map
+
+🎧 Music Recommender Data Flow Map
+1️⃣ INPUT — User Preferences (The Listener’s Headspace)
+
+This is the “mood snapshot” of the user.
+
+user_prefs = {
+    favorite_genre,
+    mood_context,
+    target_energy_range,
+    target_valence,
+    target_acousticness,
+    likes_acoustic
+}
+What this represents:
+🎯 Intent (mood_context)
+⚡ Energy window (range instead of point)
+🌿 Texture preference (acousticness)
+🎨 Taste bias (genre preference)
+
+👉 Think of this as:
+
+“What kind of world is the listener in right now?”
+
+2️⃣ PROCESS — Scoring Loop (The Judge for Every Song)
+
+This is the core engine.
+
+Step 1: Load Songs
+songs = load_songs("songs.csv")
+Step 2: Loop Through Every Song
+
+For EACH song:
+
+for song in songs:
+    score = 0
+Step 3: Apply Scoring Recipe (Your Algorithm Brain)
+
+Each song is evaluated across layers:
+
+🎚 Vibe Similarity (0.50)
+energy range match
+acousticness distance
+valence distance
+🎭 Mood Match (0.25)
+mood_context match OR mood family match
+🎵 Genre Context (0.15)
+exact or adjacent genre boost
+🥁 Rhythm Refinement (0.10)
+expected danceability from energy range midpoint
+Step 4: Apply Penalties
+
+After scoring:
+
+same artist repetition → ×0.80
+BPM mismatch → ×0.90
+Result of Loop:
+song → final_score
+
+So the loop transforms:
+
+raw song data → scored intelligence object
+
+3️⃣ OUTPUT — Ranking (The Playlist Builder)
+
+Now the system has:
+
+[(song1, score1), (song2, score2), ...]
+Step 1: Sort
+sort by score descending
+Step 2: Apply Ranking Rules
+resolve near-ties (mood priority if within threshold)
+ensure artist diversity across top results
+preserve smooth tempo flow indirectly via scoring
+Step 3: Select Top K
+top_k = ranked_songs[:k]
+🎧 FINAL OUTPUT
+Top K Recommended Songs
+→ song + score + explanation
+🧠 One-Line Mental Model
+
+User preference defines a “listening gravity field,”
+each song is pulled through a scoring funnel,
+and the strongest matches rise to form a ranked playlist.
+
