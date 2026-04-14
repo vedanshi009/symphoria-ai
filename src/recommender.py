@@ -1,5 +1,7 @@
-from typing import List, Dict, Tuple, Optional
+
 from dataclasses import dataclass
+from typing import List, Dict, Any,Tuple, Optional
+import csv
 
 @dataclass
 class Song:
@@ -38,36 +40,326 @@ class Recommender:
         self.songs = songs
 
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        # TODO: Implement recommendation logic
-        return self.songs[:k]
+        """
+        Scores all songs, ranks them, and returns top-k.
+        """
+
+        scored = []
+
+        # Convert UserProfile → Dict format expected by score_song
+        user_prefs = {
+            "favorite_genre": user.favorite_genre,
+            "mood_context": [user.favorite_mood],  # adapter layer
+            "target_energy_range": (
+                max(0.0, user.target_energy - 0.15),
+                min(1.0, user.target_energy + 0.15)
+            ),
+            "target_valence": 0.5,          # neutral default (not in class)
+            "target_acousticness": 0.5,     # neutral default
+            "likes_acoustic": user.likes_acoustic
+        }
+
+        # Score every song
+        for song in self.songs:
+            # Convert Song → Dict (since score_song expects dict)
+            song_dict = song.__dict__
+
+            score, _ = score_song(user_prefs, song_dict)
+            scored.append((song, score))
+
+        # Sort by score (descending)
+        ranked = sorted(scored, key=lambda x: x[1], reverse=True)
+
+        # Return top-k songs only (OOP requirement)
+        return [song for song, _ in ranked[:k]]
+
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        # TODO: Implement explanation logic
-        return "Explanation placeholder"
+        """
+        Generates human-readable explanation for why a song was recommended.
+        """
 
-def load_songs(csv_path: str) -> List[Dict]:
+        user_prefs = {
+            "favorite_genre": user.favorite_genre,
+            "mood_context": [user.favorite_mood],
+            "target_energy_range": (
+                max(0.0, user.target_energy - 0.15),
+                min(1.0, user.target_energy + 0.15)
+            ),
+            "target_valence": 0.5,
+            "target_acousticness": 0.5,
+            "likes_acoustic": user.likes_acoustic
+        }
+
+        song_dict = song.__dict__
+
+        score, reasons = score_song(user_prefs, song_dict)
+
+        return (
+            f"Recommended because it scored {score:.2f} based on:\n"
+            + " • " + "\n • ".join(reasons)
+        )
+
+def load_songs(csv_path: str) -> List[Dict[str, Any]]:
     """
-    Loads songs from a CSV file.
-    Required by src/main.py
+    Loads songs from CSV and prepares them for the scoring engine.
+
+    Converts all numeric audio features into proper types so
+    scoring math can be applied directly.
     """
-    # TODO: Implement CSV loading logic
+
     print(f"Loading songs from {csv_path}...")
-    return []
+
+    songs: List[Dict[str, Any]] = []
+
+    # The system uses these as FLOAT features for similarity scoring
+    FLOAT_FIELDS = {
+        "energy",
+        "valence",
+        "danceability",
+        "acousticness"
+    }
+
+    # BPM is used for tempo penalty logic → integer preferred
+    INT_FIELDS = {
+        "tempo_bpm"
+    }
+
+    # Everything else stays categorical/string
+    try:
+        with open(csv_path, mode="r", encoding="utf-8") as file:
+            reader = csv.DictReader(file)
+
+            for row in reader:
+                song: Dict[str, Any] = {}
+
+                for key, value in row.items():
+
+                    if value is None:
+                        song[key] = None
+                        continue
+
+                    value = value.strip()
+
+                    # ID → int (useful for tracking but not scoring)
+                    if key == "id":
+                        try:
+                            song[key] = int(value)
+                        except ValueError:
+                            song[key] = None
+
+                    # Float features → core of vibe similarity layer
+                    elif key in FLOAT_FIELDS:
+                        try:
+                            song[key] = float(value)
+                        except ValueError:
+                            song[key] = None
+
+                    # BPM → integer for tempo penalty logic
+                    elif key in INT_FIELDS:
+                        try:
+                            song[key] = int(float(value))
+                        except ValueError:
+                            song[key] = None
+
+                    # Strings → used for mood, genre, artist logic
+                    else:
+                        song[key] = value
+
+                songs.append(song)
+
+    except FileNotFoundError:
+        print(f"File not found: {csv_path}")
+    except Exception as e:
+        print(f"Error loading songs: {e}")
+
+    print(f"Loaded {len(songs)} songs 🎵 ready for scoring engine")
+    return songs
 
 def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     """
     Scores a single song against user preferences.
-    Required by recommend_songs() and src/main.py
+
+    Returns:
+        (score, reasons)
     """
-    # TODO: Implement scoring logic using your Algorithm Recipe from Phase 2.
-    # Expected return format: (score, reasons)
-    return []
+
+    reasons: List[str] = []
+    score = 0.0
+
+    # -----------------------------
+    # CONSTANTS (Algorithm Recipe)
+    # -----------------------------
+    MOOD_FAMILIES = {
+        "chill": {"relaxed", "focused", "late-night"},
+        "happy": {"energetic"},
+        "moody": {"intense"},
+    }
+
+    GENRE_NEIGHBORS = {
+        "lofi": {"ambient", "bedroom pop"},
+        "pop": {"indie pop"},
+        "rock": {"indie rock"},
+    }
+   # Helper: find mood family
+    def get_mood_family(mood: str):
+        for family, moods in MOOD_FAMILIES.items():
+            if mood in moods:
+                return family
+        return None
+    # -----------------------------
+    # USER INPUT
+    # -----------------------------
+    energy_min, energy_max = user_prefs["target_energy_range"]
+    target_valence = user_prefs["target_valence"]
+    target_acousticness = user_prefs["target_acousticness"]
+    mood_context = set(user_prefs["mood_context"])
+    favorite_genre = user_prefs["favorite_genre"]
+    likes_acoustic = user_prefs.get("likes_acoustic", False)
+
+    # ==========================================================
+    # LAYER 1 — VIBE SIMILARITY (MAX 0.50)
+    # ==========================================================
+
+    def range_distance(value, low, high):
+        if low <= value <= high:
+            return 0.0
+        if value < low:
+            return low - value
+        return value - high
+
+    # ---- Energy (0.22)
+    energy_distance = range_distance(song["energy"], energy_min, energy_max)
+    energy_similarity = 0.22 * (1 - min(1, energy_distance))
+    score += energy_similarity
+    reasons.append(f"energy alignment (+{energy_similarity:.2f})")
+
+    # ---- Acousticness (0.18)
+    acoustic_distance = abs(song["acousticness"] - target_acousticness)
+    acoustic_similarity = 0.18 * (1 - min(1, acoustic_distance))
+    score += acoustic_similarity
+    reasons.append(f"acoustic texture match (+{acoustic_similarity:.2f})")
+
+    # Acoustic preference boost
+    if likes_acoustic and song["acousticness"] > 0.6:
+        score += 0.03
+        reasons.append("acoustic preference boost (+0.03)")
+
+    # ---- Valence (0.10)
+    valence_distance = abs(song["valence"] - target_valence)
+    valence_similarity = 0.10 * (1 - min(1, valence_distance))
+    score += valence_similarity
+    reasons.append(f"emotional tone similarity (+{valence_similarity:.2f})")
+
+    # ==========================================================
+    # LAYER 2 — MOOD MATCH (MAX 0.25)
+    # ==========================================================
+
+    song_mood = song["mood"]
+
+    if song_mood in mood_context:
+        score += 0.25
+        reasons.append("direct mood match (+0.25)")
+    else:
+        # Family-to-family comparison
+        song_family = get_mood_family(song_mood)
+        user_families = {get_mood_family(m) for m in mood_context}
+
+        if song_family and song_family in user_families:
+            score += 0.12
+            reasons.append("mood family match (+0.12)")
+
+    # ==========================================================
+    # LAYER 3 — GENRE CONTEXT (MAX 0.15)
+    # ==========================================================
+
+    song_genre = song["genre"]
+
+    if song_genre == favorite_genre:
+        score += 0.10
+        reasons.append("favorite genre match (+0.10)")
+    elif favorite_genre in GENRE_NEIGHBORS and \
+         song_genre in GENRE_NEIGHBORS[favorite_genre]:
+        score += 0.05
+        reasons.append("adjacent genre match (+0.05)")
+
+    # ==========================================================
+    # LAYER 4 — SECONDARY VIBE REFINEMENT (MAX 0.10)
+    # ==========================================================
+
+    expected_energy = (energy_min + energy_max) / 2
+    expected_danceability = 0.3 + (expected_energy * 0.6)
+
+    dance_distance = abs(expected_danceability - song["danceability"])
+    dance_score = 0.10 * (1 - min(1, dance_distance))
+
+    score += dance_score
+    reasons.append(f"rhythm alignment (+{dance_score:.2f})")
+
+
+    # ==========================================================
+    # PENALTIES (MULTIPLICATIVE)
+    # ==========================================================
+
+    # Smooth tempo penalty instead of binary rule (fix #7)
+    expected_bpm = 60 + (expected_energy * 100)
+    tempo_diff = abs(song["tempo_bpm"] - expected_bpm)
+
+    tempo_penalty = max(0.85, 1 - (tempo_diff / 200))
+    if tempo_penalty < 1:
+        score *= tempo_penalty
+        reasons.append(f"tempo consistency penalty (×{tempo_penalty:.2f})")
+
+    # ==========================================================
+    # SCORE NORMALIZATION 
+    # ==========================================================
+    # Expands separation between good and great songs
+
+    score = score ** 1.15
+
+    # Clamp final result
+    score = max(0.0, min(1.0, score))
+
+    return score, reasons
 
 def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
     """
     Functional implementation of the recommendation logic.
     Required by src/main.py
+    Steps:
+    1. Score every song using score_song()
+    2. Attach score + reasons
+    3. Sort songs by score (descending)
+    4. Return top-k results
+
+    Returns:
+        List of (song_dict, score, explanation)
     """
-    # TODO: Implement scoring and ranking logic
-    # Expected return format: (song_dict, score, explanation)
-    return []
+    scored_songs = []
+
+    # ----------------------------------------------------------
+    # 1. SCORE EVERY SONG 
+    # ----------------------------------------------------------
+    for song in songs:
+        score, reasons = score_song(user_prefs, song)
+
+        scored_songs.append((
+            song,
+            score,
+            reasons  
+        ))
+
+    # ----------------------------------------------------------
+    # 2. SORT BY SCORE (DESCENDING)
+    # ----------------------------------------------------------
+
+    ranked_songs = sorted(
+        scored_songs,
+        key=lambda x: x[1],
+        reverse=True
+    )
+
+    # ----------------------------------------------------------
+    # 3. RETURN TOP-K
+    # ----------------------------------------------------------
+    return ranked_songs[:k]
