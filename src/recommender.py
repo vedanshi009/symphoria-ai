@@ -1,7 +1,8 @@
-
+#File: src/recommender.py
 from dataclasses import dataclass
-from typing import List, Dict, Any,Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional
 import csv
+
 
 @dataclass
 class Song:
@@ -33,36 +34,53 @@ class UserProfile:
 
 class Recommender:
     """
-    OOP implementation of the recommendation logic.
-    Required by tests/test_recommender.py
+    Object-oriented recommender used by tests and agent pipeline.
     """
+
     def __init__(self, songs: List[Song]):
         self.songs = songs
 
-    def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
+    def _normalize_user(self, user):
         """
-        Scores all songs, ranks them, and returns top-k.
+        Allows both dictionary user profiles and UserProfile objects.
+        """
+        if isinstance(user, dict):
+            return user
+        if isinstance(user, UserProfile):
+            return user.__dict__
+        return None
+
+    def recommend(self, user, k: int = 5) -> List[Song]:
+        """
+        Scores all songs and returns top-k results.
         """
 
         scored = []
 
-        # Convert UserProfile → Dict format expected by score_song
-        user_prefs = {
-            "favorite_genre": user.favorite_genre,
-            "mood_context": [user.favorite_mood],  # adapter layer
-            "target_energy_range": (
-                max(0.0, user.target_energy - 0.15),
-                min(1.0, user.target_energy + 0.15)
-            ),
-            "target_valence": 0.5,          # neutral default (not in class)
-            "target_acousticness": 0.5,     # neutral default
-            "likes_acoustic": user.likes_acoustic
-        }
+        user_dict = self._normalize_user(user)
+
+        # If already a dict (agent pipeline)
+        if isinstance(user_dict, dict):
+            user_prefs = user_dict
+
+        # If coming from UserProfile (unit tests)
+        else:
+            user_prefs = {
+                "favorite_genre": user.favorite_genre,
+                "mood_context": [user.favorite_mood],
+                "target_energy_range": (
+                    max(0.0, user.target_energy - 0.15),
+                    min(1.0, user.target_energy + 0.15)
+                ),
+                "target_valence": 0.5,
+                "target_acousticness": 0.5,
+                "likes_acoustic": user.likes_acoustic
+            }
 
         # Score every song
         for song in self.songs:
             # Convert Song → Dict (since score_song expects dict)
-            song_dict = song.__dict__
+            song_dict = song if isinstance(song, dict) else song.__dict__
 
             score, _ = score_song(user_prefs, song_dict)
             scored.append((song, score))
@@ -72,32 +90,6 @@ class Recommender:
 
         return [song for song, _ in ranked[:k]]
 
-
-    def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        """
-        Generates human-readable explanation for why a song was recommended.
-        """
-
-        user_prefs = {
-            "favorite_genre": user.favorite_genre,
-            "mood_context": [user.favorite_mood],
-            "target_energy_range": (
-                max(0.0, user.target_energy - 0.15),
-                min(1.0, user.target_energy + 0.15)
-            ),
-            "target_valence": 0.5,
-            "target_acousticness": 0.5,
-            "likes_acoustic": user.likes_acoustic
-        }
-
-        song_dict = song.__dict__
-
-        score, reasons = score_song(user_prefs, song_dict)
-
-        return (
-            f"Recommended because it scored {score:.2f} based on:\n"
-            + " • " + "\n • ".join(reasons)
-        )
 
 def load_songs(csv_path: str) -> List[Dict[str, Any]]:
     """
@@ -138,7 +130,8 @@ def load_songs(csv_path: str) -> List[Dict[str, Any]]:
                         song[key] = None
                         continue
 
-                    value = value.strip()
+                    if isinstance(value, str):
+                        value = value.strip()
 
                     # ID → int (useful for tracking but not scoring)
                     if key == "id":
@@ -164,6 +157,23 @@ def load_songs(csv_path: str) -> List[Dict[str, Any]]:
                     # Strings → used for mood, genre, artist logic
                     else:
                         song[key] = value
+
+                # --------------------------------------------------
+                # Row validation: drop any song that is missing a
+                # field score_song() will do math on.  A None in
+                # energy/valence/danceability/acousticness/tempo_bpm
+                # causes a TypeError inside range_distance(); better
+                # to skip the row loudly than crash silently later.
+                # --------------------------------------------------
+                REQUIRED_NUMERIC = {
+                    "energy", "valence", "danceability",
+                    "acousticness", "tempo_bpm"
+                }
+                if any(song.get(f) is None for f in REQUIRED_NUMERIC):
+                    missing = [f for f in REQUIRED_NUMERIC if song.get(f) is None]
+                    label = song.get("title") or song.get("id") or "unknown"
+                    print(f"  ⚠️  Skipping '{label}' — missing/unparseable fields: {missing}")
+                    continue
 
                 songs.append(song)
 
@@ -200,12 +210,14 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
         "pop": {"indie pop"},
         "rock": {"indie rock"},
     }
-   # Helper: find mood family
+
+    # Helper: find mood family
     def get_mood_family(mood: str):
         for family, moods in MOOD_FAMILIES.items():
             if mood in moods:
                 return family
         return None
+
     # -----------------------------
     # USER INPUT
     # -----------------------------
@@ -321,7 +333,7 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
 
     return score, reasons
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
+def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 30) -> List[Tuple[Dict, float, str]]:
     """
     Functional implementation of the recommendation logic.
     Required by src/main.py
