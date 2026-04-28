@@ -18,6 +18,10 @@ MOOD_SIGNALS = {
     "study": "focused",
     "happy": "happy",
     "sad": "sad",
+    "energetic": "energetic",
+    "hype": "energetic",
+    "gym": "energetic",
+    "party": "energetic",
 }
 
 GENRE_SIGNALS = {
