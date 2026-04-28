@@ -2,7 +2,7 @@
 
 from typing import List, Tuple, Dict, Any
 from collections import defaultdict
-from planner_agent import RecommendationPlan
+from src.planner_agent import RecommendationPlan
 
 
 class PlaylistBuilder:

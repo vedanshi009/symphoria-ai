@@ -117,3 +117,52 @@ class PlannerAgent:
             confidence=confidence,
             reason="high energy intent; reduce acoustic dominance without mutating user preferences",
         )
+    
+    def refine_plan(self, plan: RecommendationPlan, evaluation_report: dict) -> RecommendationPlan:
+        """
+        Lightweight feedback injection layer.
+        Converts evaluator signals → updated constraints.
+        """
+
+        adjusted = dict(plan.adjusted_user_prefs)
+        issues = evaluation_report.get("issues", [])
+
+        # -----------------------------------------
+        # ENERGY ADJUSTMENTS
+        # -----------------------------------------
+        if "playlist too chaotic in energy transitions" in issues:
+            low, high = adjusted.get("target_energy_range", (0.4, 0.6))
+            adjusted["target_energy_range"] = (low, max(low, high - 0.1))
+
+        if "playlist too monotonous in energy" in issues:
+            low, high = adjusted.get("target_energy_range", (0.4, 0.6))
+            adjusted["target_energy_range"] = (max(0.0, low - 0.05), min(1.0, high + 0.05))
+
+        # -----------------------------------------
+        # DIVERSITY ADJUSTMENT
+        # -----------------------------------------
+        if any("exceeds max_artists" in i for i in issues):
+            new_max = min(3, plan.max_artists + 1)
+        else:
+            new_max = plan.max_artists
+
+        # -----------------------------------------
+        # MOOD SIGNAL BOOST (soft)
+        # -----------------------------------------
+        if "low mood alignment with user intent" in issues:
+            adjusted["mood_weight_boost"] = 0.1
+
+        # -----------------------------------------
+        # RETURN NEW PLAN (NO MUTATION)
+        # -----------------------------------------
+        return RecommendationPlan(
+            mode=plan.mode,
+            weights=plan.weights,
+            diversity_required=plan.diversity_required,
+            energy_curve=plan.energy_curve,
+            max_artists=new_max,
+            adjusted_user_prefs=adjusted,
+            confidence=plan.confidence,
+            reason=plan.reason + " | refined via evaluator feedback",
+            energy_curve_style=plan.energy_curve_style
+        )

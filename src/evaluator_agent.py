@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Union
 from collections import defaultdict
-from planner_agent import RecommendationPlan
+from src.planner_agent import RecommendationPlan
 
 
 class EvaluatorAgent:
@@ -86,13 +86,12 @@ class EvaluatorAgent:
         # variance = how spread out energy values are
         variance = sum((e - mean_energy) ** 2 for e in energies) / len(energies)
 
-        energy_variance = variance / 0.25
-        energy_variance = min(1.0, energy_variance)
+        energy_variance = variance 
 
         # interpret variance quality
-        if energy_variance < 0.01:
+        if energy_variance < 0.005:
             issues.append("energy is too flat (boring playlist)")
-        elif energy_variance > 0.09:
+        elif energy_variance > 0.08:
             issues.append("energy is too chaotic (no smooth flow)")
 
         # we want a "balanced" variance around a target value
@@ -115,8 +114,12 @@ class EvaluatorAgent:
 
             # count how many songs match desired mood
             for song in playlist:
-                if self._get(song, "mood") in mood_context:
+                song_mood = self._get(song, "mood")
+
+                if song_mood in mood_context:
                     matches += 1
+                elif any(song_mood in m for m in mood_context):
+                    matches += 0.5
 
             mood_match_score = matches / len(playlist)
 
