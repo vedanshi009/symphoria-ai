@@ -1,121 +1,200 @@
 """
-Command line runner for the Music Recommender Simulation.
+File: src/main.py
+Agentic Music Recommender Runner
 
+Pipeline order:
+  parse_intent → PlannerAgent → recommend_songs → PlaylistBuilder
+      → EvaluatorAgent (loop) → CuratorAgent → print output
+
+With 90 songs in the dataset:
+  - Score all 90 every iteration (no pre-filtering ceiling)
+  - PlaylistBuilder selects k=10 with artist diversity constraints
+  - Up to 3 self-correction iterations before curator runs
 """
 
 from recommender import load_songs, recommend_songs
+from intent_parser import parse_intent
+from planner_agent import PlannerAgent
+from playlist_builder import PlaylistBuilder
+from evaluator_agent import EvaluatorAgent
+from curator_agent import CuratorAgent
 
 
-def run_profile(name, user_prefs, songs):
-    print("\n" + "=" * 60)
-    print(f"🎧 USER PROFILE: {name}")
-    print("=" * 60)
-
-    recommendations = recommend_songs(user_prefs, songs, k=5)
-
-    for i, (song, score, reasons) in enumerate(recommendations, start=1):
-        print(f"\n#{i} 🎵 {song['title']} — {song['artist']}")
-        print(f"Score: {score:.2f}")
-
-        print("Why this fits:")
-        for r in reasons:
-            print(f"  • {r}")
-
-    print("\n")
+# ------------------------------------------------------------------
+# K VALUES  (90-song dataset)
+#
+# SCORE_K  = how many scored songs to keep before builder sees them
+#            → use all songs (None = no ceiling); the builder's own
+#              artist-limit + greedy selection does the real trimming
+#
+# PLAYLIST_K = final playlist length
+#            → 10 songs is enough to show diversity, energy arc, and
+#              mood matching without padding with mediocre picks
+# ------------------------------------------------------------------
+SCORE_K    = 90   # pass everything scored to the builder
+PLAYLIST_K = 10   # final playlist length
 
 
-def main() -> None:
+def _build_user_prefs(intent: dict, genre_hint: str = "lofi") -> dict:
+    """
+    Merges the intent parser output with any profile-level fields
+    that the parser cannot infer from free text alone.
+
+    favorite_genre: intent_parser leaves this None intentionally;
+                    caller injects it from the user's stored profile
+                    (or a sensible default for the demo).
+    """
+    prefs = dict(intent)
+    if prefs.get("favorite_genre") is None:
+        prefs["favorite_genre"] = genre_hint
+    return prefs
+
+
+def run_agent_system(user_input: str, favorite_genre: str = "lofi"):
+
+    print("\n" + "=" * 70)
+    print("🎧 AGENTIC MUSIC CURATION SYSTEM")
+    print("=" * 70)
+
+    # ------------------------------------------------------------------
+    # Load Data
+    # ------------------------------------------------------------------
     songs = load_songs("data/songs.csv")
 
-    # =====================================================
-    # NORMAL USERS
-    # =====================================================
+    # ------------------------------------------------------------------
+    # Initialize Agents
+    # ------------------------------------------------------------------
+    planner   = PlannerAgent()
+    builder   = PlaylistBuilder()
+    evaluator = EvaluatorAgent()
+    curator   = CuratorAgent()
 
-    chill_lofi = {
-        "favorite_genre": "lofi",
-        "mood_context": ["focused", "relaxed", "late-night"],
-        "target_energy_range": (0.35, 0.60),
-        "target_valence": 0.65,
-        "target_acousticness": 0.75,
-        "likes_acoustic": True,
-    }
+    # ------------------------------------------------------------------
+    # STEP 1 — Intent Parsing
+    # ------------------------------------------------------------------
+    intent = parse_intent(user_input)
 
-    high_energy_pop = {
-        "favorite_genre": "pop",
-        "mood_context": ["energetic", "happy"],
-        "target_energy_range": (0.75, 0.95),
-        "target_valence": 0.85,
-        "target_acousticness": 0.20,
-        "likes_acoustic": False,
-    }
+    # Inject favorite_genre — parser leaves this None by design
+    user_prefs = _build_user_prefs(intent, genre_hint=favorite_genre)
 
-    deep_intense_rock = {
-        "favorite_genre": "rock",
-        "mood_context": ["intense", "moody"],
-        "target_energy_range": (0.65, 0.90),
-        "target_valence": 0.30,
-        "target_acousticness": 0.25,
-        "likes_acoustic": False,
-    }
+    # Print only the scoring-relevant keys — pipeline metadata
+    # (context, arc_type, bpm_range, ambiguity, conflicts, etc.)
+    # is useful for debugging but clutters normal output.
+    SCORING_KEYS = [
+        "target_energy_range", "target_valence", "target_acousticness",
+        "mood_context", "favorite_genre", "likes_acoustic",
+    ]
+    print("\n🧠 Intent Parsed")
+    for k in SCORING_KEYS:
+        v = user_prefs.get(k)
+        # Round floats and float-tuples to 2 decimal places for readability
+        if isinstance(v, float):
+            v = round(v, 2)
+        elif isinstance(v, tuple):
+            v = tuple(round(x, 2) for x in v)
+        print(f"  {k}: {v}")
+    # Surface ambiguity warnings if present — these are actionable
+    if user_prefs.get("ambiguity"):
+        print(f"  ⚠️  conflicts: {user_prefs.get('conflicts', [])}")
 
-    # =====================================================
-    # EDGE CASE USERS
-    # =====================================================
+    # ------------------------------------------------------------------
+    # STEP 2 — Planning
+    #   arg 1 = intent (confidence, ambiguity, energy signal for mode)
+    #   arg 2 = user_prefs (the full scoring-compatible dict)
+    # ------------------------------------------------------------------
+    plan = planner.create_plan(intent, user_prefs)
 
-    ultra_specific_listener = {
-        "favorite_genre": "lofi",
-        "mood_context": ["focused"],
-        "target_energy_range": (0.50, 0.52),  # extremely narrow
-        "target_valence": 0.60,
-        "target_acousticness": 0.80,
-        "likes_acoustic": True,
-    }
+    print(f"\n📋 Plan: mode={plan.mode} | confidence={plan.confidence:.2f}")
+    print(f"   reason: {plan.reason}")
 
-    neutral_listener = {
-        "favorite_genre": "pop",
-        "mood_context": [],
-        "target_energy_range": (0.0, 1.0),  # accepts everything
-        "target_valence": 0.50,
-        "target_acousticness": 0.50,
-        "likes_acoustic": True,
-    }
+    # ------------------------------------------------------------------
+    # STEP 3-4 — Iterative Score → Build → Evaluate loop
+    #
+    # Re-scores on every iteration so that planner adjustments
+    # (e.g. widened energy range) actually affect which songs surface.
+    # ------------------------------------------------------------------
+    MAX_ITER = 3
+    evaluation_report = {}
+    playlist = []
 
-    # =====================================================
-    # ADVERSARIAL USERS (LOGIC STRESS TESTS)
-    # =====================================================
+    for iteration in range(MAX_ITER):
 
-    conflicting_emotions = {
-        "favorite_genre": "rock",
-        "mood_context": ["sad"],
-        "target_energy_range": (0.85, 0.95),  # sad but extremely energetic
-        "target_valence": 0.20,
-        "target_acousticness": 0.80,
-        "likes_acoustic": True,
-    }
+        print(f"\n🔁 Iteration {iteration + 1} — scoring with adjusted prefs")
 
-    acoustic_club_paradox = {
-        "favorite_genre": "lofi",
-        "mood_context": ["energetic"],
-        "target_energy_range": (0.80, 1.00),
-        "target_valence": 0.90,
-        "target_acousticness": 0.95,  # acoustic but party energy
-        "likes_acoustic": True,
-    }
+        # Score all songs against current adjusted prefs
+        ranked_songs = recommend_songs(
+            plan.adjusted_user_prefs,
+            songs,
+            k=SCORE_K
+        )
 
-    # RUN ALL SIMULATIONS
+        # Build playlist from ranked candidates
+        playlist = builder.build(ranked_songs, plan, k=PLAYLIST_K)
 
-    profiles = {
-        "Chill Lofi": chill_lofi,
-        "High Energy Pop": high_energy_pop,
-        "Deep Intense Rock": deep_intense_rock,
-        "Ultra Specific Listener (Edge Case)": ultra_specific_listener,
-        "Neutral Listener (Edge Case)": neutral_listener,
-        "Conflicting Emotions (Adversarial)": conflicting_emotions,
-        "Acoustic Club Paradox (Adversarial)": acoustic_club_paradox,
-    }
+        # Evaluate
+        evaluation_report = evaluator.evaluate(
+            playlist,
+            plan,
+            plan.adjusted_user_prefs
+        )
 
-    for name, profile in profiles.items():
-        run_profile(name, profile, songs)
+        score_str = f"{evaluation_report.get('score', 0):.2f}"
+        passed    = evaluation_report.get("pass", False)
+        issues    = evaluation_report.get("issues", [])
+
+        print(f"   Score: {score_str} | Pass: {passed}")
+        if issues:
+            print(f"   Issues: {', '.join(issues)}")
+
+        if passed:
+            print("✅ Evaluation passed")
+            break
+
+        if iteration < MAX_ITER - 1:
+            # Re-plan with feedback: intent stays fixed, prefs evolve
+            print("⚙️  Refining plan...")
+            plan = planner.create_plan(intent, plan.adjusted_user_prefs)
+
+    # ------------------------------------------------------------------
+    # STEP 5 — Curator Layer
+    # ------------------------------------------------------------------
+    curated_output = curator.curate(
+        playlist,
+        plan,
+        evaluation_report,
+        plan.adjusted_user_prefs
+    )
+
+    # ------------------------------------------------------------------
+    # STEP 6 — Output
+    # ------------------------------------------------------------------
+    print("\n" + "=" * 70)
+    print("🎼 FINAL PLAYLIST")
+    print("=" * 70)
+
+    print(f"\n📀 {curated_output['playlist_name']}")
+    print(f"🌊 Arc: {curated_output['emotional_arc']}")
+    print(f"\n{curated_output['summary']}")
+
+    print("\nTracklist:")
+    for i, song in enumerate(curated_output["song_explanations"], 1):
+        print(f"\n  {i:02d}. {song['title']} — {song['artist']}")
+        print(f"      Role : {song['role_in_playlist']}")
+        print(f"      Why  : {song['why_this_song']}")
+
+    print(f"\n📝 {curated_output['final_note']}")
+
+
+def main():
+
+    user_input = (
+        "I want music for deep focus coding at night "
+        "with calm energy but emotional warmth"
+    )
+
+    # favorite_genre would normally come from a stored user profile.
+    # Hardcoded here for the demo run.
+    run_agent_system(user_input, favorite_genre="lofi")
 
 
 if __name__ == "__main__":
