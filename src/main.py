@@ -11,14 +11,17 @@ With 90 songs in the dataset:
   - PlaylistBuilder selects k=10 with artist diversity constraints
   - Up to 3 self-correction iterations before curator runs
 """
+import sys
+import os
 
-from recommender import load_songs, recommend_songs
-from intent_parser import parse_intent
-from planner_agent import PlannerAgent
-from playlist_builder import PlaylistBuilder
-from evaluator_agent import EvaluatorAgent
-from curator_agent import CuratorAgent
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
+from src.recommender import load_songs, recommend_songs
+from src.intent_parser import parse_intent
+from src.planner_agent import PlannerAgent
+from src.playlist_builder import PlaylistBuilder
+from src.evaluator_agent import EvaluatorAgent
+from src.curator_agent import CuratorAgent
 
 # ------------------------------------------------------------------
 # K VALUES  (90-song dataset)
@@ -74,7 +77,13 @@ def run_agent_system(user_input: str, favorite_genre: str = "lofi"):
     # ------------------------------------------------------------------
     intent = parse_intent(user_input)
 
-    # Inject favorite_genre — parser leaves this None by design
+    favorite_genre = intent.get("favorite_genre")
+
+    if favorite_genre is None:
+        favorite_genre = "pop"  # neutral fallback
+
+    user_prefs = intent
+    user_prefs["favorite_genre"] = favorite_genre
     user_prefs = _build_user_prefs(intent, genre_hint=favorite_genre)
 
     # Print only the scoring-relevant keys — pipeline metadata
@@ -139,8 +148,8 @@ def run_agent_system(user_input: str, favorite_genre: str = "lofi"):
         )
 
         score_str = f"{evaluation_report.get('score', 0):.2f}"
-        passed    = evaluation_report.get("pass", False)
-        issues    = evaluation_report.get("issues", [])
+        passed = evaluation_report.get("pass", False)
+        issues = evaluation_report.get("issues", [])
 
         print(f"   Score: {score_str} | Pass: {passed}")
         if issues:
@@ -153,7 +162,9 @@ def run_agent_system(user_input: str, favorite_genre: str = "lofi"):
         if iteration < MAX_ITER - 1:
             # Re-plan with feedback: intent stays fixed, prefs evolve
             print("⚙️  Refining plan...")
-            plan = planner.create_plan(intent, plan.adjusted_user_prefs)
+            plan = planner.refine_plan(
+            plan,
+            evaluation_report)
 
     # ------------------------------------------------------------------
     # STEP 5 — Curator Layer
@@ -187,15 +198,15 @@ def run_agent_system(user_input: str, favorite_genre: str = "lofi"):
 
 def main():
 
-    user_input = (
-        "I want music for deep focus coding at night "
-        "with calm energy but emotional warmth"
-    )
+    print("\n🎧 AGENTIC MUSIC RECOMMENDER")
+    print("Type a mood (or 'exit' to quit)\n")
 
-    # favorite_genre would normally come from a stored user profile.
-    # Hardcoded here for the demo run.
-    run_agent_system(user_input, favorite_genre="lofi")
+    while True:
+        user_input = input("👉 Enter request: ")
 
+        if user_input.lower() == "exit":
+            break
 
+        run_agent_system(user_input)
 if __name__ == "__main__":
     main()
