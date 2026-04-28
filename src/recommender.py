@@ -221,11 +221,11 @@ def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     # -----------------------------
     # USER INPUT
     # -----------------------------
-    energy_min, energy_max = user_prefs["target_energy_range"]
-    target_valence = user_prefs["target_valence"]
-    target_acousticness = user_prefs["target_acousticness"]
-    mood_context = set(user_prefs["mood_context"])
-    favorite_genre = user_prefs["favorite_genre"]
+    energy_min, energy_max = user_prefs.get("target_energy_range", (0.4, 0.6))
+    target_valence = user_prefs.get("target_valence", 0.5)
+    target_acousticness = user_prefs.get("target_acousticness", 0.5)
+    mood_context = set(user_prefs.get("mood_context", []))
+    favorite_genre = user_prefs.get("favorite_genre", "")
     likes_acoustic = user_prefs.get("likes_acoustic", False)
 
     # ==========================================================
