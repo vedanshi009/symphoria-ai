@@ -212,9 +212,10 @@ For different user types, the system works well when preferences are clear, but 
 
 ## Limitations and Risks
 
-- Small dataset limits diversity and realism  
-- Can still over-favor certain genres or moods  
-- Assumes user preferences stay consistent  
+The system is mostly rule-based, so it depends heavily on predefined keywords and weights. This makes it less flexible when users express feelings in unusual or nuanced ways. It can also over-represent moods or genres that are strongly encoded in the signal lists (like “chill” or “lofi”), which may bias results toward familiar patterns instead of diverse discovery.
+
+This type of recommender could be misused to overly reinforce a user’s emotional state (for example, continuously recommending sad or high-energy music without balance).
+To reduce this risk, constraints like mood diversity, energy balancing, and evaluation feedback loops are included. In a real system, additional safeguards like content diversity rules and user-controlled filters would help prevent emotional overfitting.
 
 ---
 
@@ -223,3 +224,15 @@ For different user types, the system works well when preferences are clear, but 
 This project helped me understand how real recommendation systems are built as pipelines instead of a single AI model. I learned how important structured data, intermediate representations (like intent and plans), and feedback loops are for improving output quality.
 
 It also showed me that building AI systems is less about having a perfect model and more about designing good decision flows, handling uncertainty, and iterating through testing and evaluation.
+
+What surprised me most was how sensitive the system is to small changes in the intent parser. A few keywords can completely change the planner’s decision and final playlist style.
+
+It also stood out that even simple evaluation rules were enough to significantly improve playlist quality through iterative refinement.
+
+## Collaboration with AI (learning experience)
+
+AI was helpful in suggesting architectural improvements, especially in separating the system into modular agents (intent, planner, builder, evaluator, curator). It also helped clarify how real recommendation pipelines are structured in industry.
+
+However, some suggestions were too aggressive or incorrect for my current project scope. For example, it sometimes pushed for full LLM-based reasoning or embedding models, which would have added unnecessary complexity and broken the simplicity required for this project.
+
+Overall, AI worked best as a design assistant and debugging guide, but I had to carefully filter suggestions to match the project goals and keep the system understandable and testable.
