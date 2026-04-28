@@ -70,7 +70,6 @@ class Recommender:
         # Sort by score (descending)
         ranked = sorted(scored, key=lambda x: x[1], reverse=True)
 
-        # Return top-k songs only (OOP requirement)
         return [song for song, _ in ranked[:k]]
 
 
