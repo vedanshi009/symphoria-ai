@@ -1,4 +1,5 @@
-from src.recommender import Song, UserProfile, Recommender
+from src.recommender import Song, UserProfile, Recommender, score_song
+
 
 def make_small_recommender() -> Recommender:
     songs = [
@@ -30,32 +31,56 @@ def make_small_recommender() -> Recommender:
     return Recommender(songs)
 
 
+# --------------------------------------------------
+# TEST 1 — recommendation ordering
+# --------------------------------------------------
 def test_recommend_returns_songs_sorted_by_score():
-    user = UserProfile(
-        favorite_genre="pop",
-        favorite_mood="happy",
-        target_energy=0.8,
-        likes_acoustic=False,
-    )
+    user = {
+    "favorite_genre": "pop",
+    "mood_context": ["happy"],
+    "target_energy_range": (0.7, 0.9),
+    "likes_acoustic": False,
+}
+
     rec = make_small_recommender()
     results = rec.recommend(user, k=2)
 
     assert len(results) == 2
-    # Starter expectation: the pop, happy, high energy song should score higher
+
+    # Expect pop + happy song ranked first
     assert results[0].genre == "pop"
     assert results[0].mood == "happy"
 
 
-def test_explain_recommendation_returns_non_empty_string():
+# --------------------------------------------------
+# TEST 2 — scoring explanation exists
+# --------------------------------------------------
+def test_score_song_returns_reasoning():
     user = UserProfile(
         favorite_genre="pop",
         favorite_mood="happy",
         target_energy=0.8,
         likes_acoustic=False,
     )
+
     rec = make_small_recommender()
     song = rec.songs[0]
 
-    explanation = rec.explain_recommendation(user, song)
-    assert isinstance(explanation, str)
-    assert explanation.strip() != ""
+    # Convert user → scoring format
+    user_dict = {
+        "favorite_genre": user.favorite_genre,
+        "mood_context": [user.favorite_mood],
+        "target_energy_range": (
+            max(0.0, user.target_energy - 0.15),
+            min(1.0, user.target_energy + 0.15),
+        ),
+        "target_valence": 0.5,
+        "target_acousticness": 0.5,
+        "likes_acoustic": user.likes_acoustic,
+    }
+
+    score, reasons = score_song(user_dict, song.__dict__)
+
+    assert isinstance(score, float)
+    assert isinstance(reasons, list)
+    assert len(reasons) > 0
