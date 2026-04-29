@@ -68,6 +68,9 @@ This architecture follows a modular hybrid pipeline that separates understanding
 
 The lower layers are deterministic. A scoring engine ranks songs using fixed rules over audio and preference features, and a playlist builder assembles the final list while enforcing constraints like artist diversity and optional energy flow ordering. An evaluator layer checks output quality and can trigger refinement if needed, while the curator layer generates human-readable explanations, including playlist naming, emotional arc, and per-song reasoning to make the results interpretable.
 
+[Demo Walkthough](https://www.loom.com/share/72f46fe31ff24c788ceee413df45d829)
+
+
 ## Getting Started
 
 ### Setup
