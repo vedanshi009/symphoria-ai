@@ -1,241 +1,118 @@
-# 🎵 Music Recommender Simulation
+# Symphoria AI 🎧
 
-## Project Summary
+**An interpretable music recommendation prototype that turns a mood or listening request into a curated playlist.**
 
-This project is a simulation of a music recommendation system that models how modern recommender engines make decisions using structured reasoning instead of machine learning.
+Symphoria explores a simple question: *How can a recommender make sensible choices without hiding all of its logic inside a black-box model?* It uses a modular, primarily rule-based Python pipeline to interpret a prompt, choose a matching strategy, score songs, build a playlist, and explain the result.
 
-The system takes a natural language input from the user (for example, “chill lofi music for studying”) and converts it into structured preferences such as mood, energy range, genre signals, and acoustic preferences. These signals are then used to generate recommendations through a multi-stage pipeline.
+**[Watch the CLI walkthrough](https://www.loom.com/share/72f46fe31ff24c788ceee413df45d829)** · **Run locally:** `python -m src.main`
 
----
-
-## How The System Works
-
-Explain your design in plain language.
-Real world recommendation systems evaluate many signals to decide which music fits a listener at a given moment, combining audio characteristics, user intent, listening context, and historical behavior, then continuously refining results through feedback and pattern recognition. 
-
-The focus of the project is interpretability and system design, showing how recommendation engines can be built as understandable pipelines rather than opaque models, while still producing meaningful, personalized results.
-
-The system works in three stages:
-
-First, the **intent parser** converts natural language input (like “chill lofi for studying”) into structured user preferences such as energy range, mood context, valence, and genre signals.
-
-Second, the **planner agent** chooses a recommendation strategy based on the clarity and strength of the user intent. It decides whether to prioritize focused matching, balanced exploration, or high-energy discovery.
-
-Third, the **recommender and playlist builder** score individual songs using weighted audio features like energy, mood alignment, genre similarity, and acoustic preference. The highest scoring songs are then assembled into a playlist with optional constraints such as artist diversity and smooth energy flow.
-
-Finally, the **curator agent** generates a human-readable explanation of the playlist, including a name, emotional arc, and per-song reasoning for why each track fits the recommendation.
+> **Project scope:** This is a command-line proof of concept built around a curated 90-song dataset, its focus is explainable system design and experimentation.
 
 
-- What features does each `Song` use in your system
-Each song uses these features:
-genre
-mood
-energy
-tempo (BPM)
-valence (positivity)
-danceability
-acousticness
-artist (for diversity handling)
--  `UserProfile` information
-favorite genre
-mood context (list of moods like ["chill", "focused"])
-target energy range (low, high)
-target valence
-target acousticness
-likes_acoustic (boolean preference signal)
+## How it works
 
--`Recommender` Scoring approach
+1. **Interpret:** `intent_parser.py` translates requests such as “chill lo-fi music for studying” into structured signals including mood, genre, energy, valence, and acoustic preferences.
+2. **Plan:** `planner_agent.py` selects a focused, balanced, or exploratory strategy based on how clearly it can interpret the request.
+3. **Recommend:** `recommender.py` scores the catalog using weighted feature comparisons; `playlist_builder.py` assembles the selected tracks with attention to artist diversity and energy flow.
+4. **Evaluate and explain:** `evaluator_agent.py` checks playlist quality and can trigger refinement. `curator_agent.py` adds a playlist title, summary, and per-track rationale.
 
-The system follows a structured, multi-stage recommendation pipeline:
+### Architecture
 
-Each song is independently scored using a rule-based function that compares its features (energy, mood, genre, valence, acousticness, etc.) against the structured user intent.
-Songs are then sorted by their final score from highest to lowest.
-The playlist builder selects the top k songs while enforcing constraints such as artist diversity and optional energy-flow shaping (to create a smooth listening experience).
-The final output is a coherent playlist sequence, not just a ranked list, designed to reflect both matching quality and listening flow.
-
-This system introduces a controlled bias toward the user’s inferred intent (especially mood and energy), since the scoring function strongly prioritizes alignment with these signals. However, exploration is still partially supported through:
-
-planner-based strategy variation (focused vs balanced vs exploration modes)
-diversity constraints in artist selection
-soft structural variation in playlist ordering (energy curve shaping)
-
-As a result, the system tends to favor highly relevant “vibe-consistent” recommendations, while still allowing limited variation through planning and diversity rules.
-
-## Architecture Design:
 ![System Diagram](assets/system_diagram.png)
 
 This architecture follows a modular hybrid pipeline that separates understanding, decision-making, and execution. An intent layer interprets raw user input and converts it into structured preferences, which are then passed to a Planner Agent that defines the recommendation strategy, including weighting signals, diversity constraints, and energy behavior. This keeps the system flexible at the top while maintaining controlled, predictable behavior downstream.
 
 The lower layers are deterministic. A scoring engine ranks songs using fixed rules over audio and preference features, and a playlist builder assembles the final list while enforcing constraints like artist diversity and optional energy flow ordering. An evaluator layer checks output quality and can trigger refinement if needed, while the curator layer generates human-readable explanations, including playlist naming, emotional arc, and per-song reasoning to make the results interpretable.
 
-[Demo Walkthough](https://www.loom.com/share/72f46fe31ff24c788ceee413df45d829)
+## Try it locally
 
+Requires Python and the dependencies listed in `requirements.txt`.
 
-## Getting Started
+```bash
+# Clone the repository, then move into its directory
+# git clone <repository-url>
+# cd <repository-directory>
 
-### Setup
+python -m venv .venv
+```
 
-1. Create a virtual environment (optional but recommended):
+Activate the environment:
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
+```bash
+# macOS / Linux
+source .venv/bin/activate
 
-2. Install dependencies
+# Windows PowerShell
+# .venv\Scripts\Activate.ps1
+
+# Windows Command Prompt
+# .venv\Scripts\activate.bat
+```
+
+Then install dependencies and run:
 
 ```bash
 pip install -r requirements.txt
-```
-
-3. Run the app:
-
-```bash
 python -m src.main
 ```
 
-### Running Tests
-
-Run the starter tests with:
+To run the included tests:
 
 ```bash
 pytest
 ```
 
----
+*The latest test suite has not been independently verified for this README revision; run it locally before reporting a pass count.*
 
-## Sample Interactions:
-```
-Type a mood (or 'exit' to quit)
+## Example interaction
 
-👉 Enter request: chill lofi study music
-Tracklist:
+For the input:
 
-  01. Spacewalk Thoughts — Orbit Bloom
-      Role : intro
-      Why  : ambient supports mood chill with energy 0.28
-
-  02. Midnight Coding — LoRoom
-      Role : transition
-      Why  : lofi supports mood chill with energy 0.42
-
-  03. Late Bus Home — Sora Avenue
-      Role : transition
-      Why  : indie electronic supports mood late-night with energy 0.55
-
-  04. Library Rain — Paper Lanterns
-      Role : transition
-      Why  : lofi supports mood chill with energy 0.35
-
-  05. Static Hearts — Cloud Theory
-      Role : transition
-      Why  : bedroom pop supports mood nostalgic with energy 0.42
-
-  06. Softly — Karan Aujla
-      Role : transition
-      Why  : punjabi supports mood chill with energy 0.58
-
-Example 2: 
-🎧 AGENTIC MUSIC RECOMMENDER
-Type a mood (or 'exit' to quit)
-
-👉 Enter request: something chill and relaxed for studying
-
-======================================================================
-🎧 AGENTIC MUSIC CURATION SYSTEM
-======================================================================
-Loading songs from data/songs.csv...
-Loaded 90 songs 🎵 ready for scoring engine
-
-🧠 Intent Parsed
-  target_energy_range: (0.1, 0.4)
-  target_valence: 0.5
-  target_acousticness: 0.5
-  mood_context: ['chill', 'relaxed', 'focused']
-  favorite_genre: pop
-  likes_acoustic: False
-
-📋 Plan: mode=focused | confidence=0.95
-   reason: high confidence intent; prioritize direct matching
-
-🔁 Iteration 1 — scoring with adjusted prefs
-   Score: 0.89 | Pass: True
-✅ Evaluation passed
-
-======================================================================
-🎼 FINAL PLAYLIST
-======================================================================
-
-📀 Chill Hip Hop Mix
-Tracklist:
-
-  01. Spacewalk Thoughts — Orbit Bloom
-      Role : intro
-      Why  : ambient supports mood chill with energy 0.28
-
-  02. Midnight Coding — LoRoom
-      Role : transition
-      Why  : lofi supports mood chill with energy 0.42
-
-  03. Softly — Karan Aujla
-      Role : transition
-      Why  : punjabi supports mood chill with energy 0.58
-
-  04. Library Rain — Paper Lanterns
-      Role : transition
-      Why  : lofi supports mood chill with energy 0.35
-
-  05. Rose Rouge — St. Germain
-      Role : transition
-      Why  : jazz supports mood chill with energy 0.48
-
+```text
+something chill and relaxed for studying
 ```
 
-## Design Decisions
+The walkthrough shows the system interpreting the request as a low-energy, focused listening context, choosing `focused` mode, and generating a playlist with short explanations for each track. One example output includes:
 
-This system was built as a modular pipeline instead of one large model. I separated intent parsing, planning, scoring, and playlist building so each part has a clear responsibility. The goal was to make the system easier to debug and improve step by step.
+```text
+Intent: ['chill', 'relaxed', 'focused']
+Plan: focused (confidence: 0.95)
+Evaluation: 0.89 | Pass: True
 
-A rule-based approach was used for scoring instead of a trained model because it is more transparent and easier to control for a project of this scale. The trade-off is that it may not capture complex music preferences as well as a learning-based recommender.
+01. Spacewalk Thoughts — Orbit Bloom
+    Why: ambient supports mood chill with energy 0.28
+02. Midnight Coding — LoRoom
+    Why: lofi supports mood chill with energy 0.42
+```
 
-## Testing Summary
+These figures are from **one documented example run**, not a benchmark-wide accuracy claim. The complete terminal flow is in the [video walkthrough](https://www.loom.com/share/72f46fe31ff24c788ceee413df45d829).
 
-Most unit tests passed after refining the intent parser, planner logic, and recommender scoring. The system works well for clear inputs like “chill lofi study music” or “high energy gym songs.”
+## Design choices and experiments
 
-Some weaker cases still appear when user input is vague or emotionally mixed, where mood detection and genre inference are less accurate. Confidence scoring helped identify these uncertain cases and improve decision-making in the planner.
+**Why use rules instead of a trained model?** With a small catalog, explicit weights make it easier to understand why a song was selected and to test changes deliberately. The trade-off is limited flexibility when requests contain unfamiliar wording or complex, contradictory preferences.
 
-## Experiments You Tried
+**What changed during experimentation?** Reducing the genre weight from `2.0` to `0.5` made genre less dominant in the observed recommendations, allowing mood and energy to influence more of the playlist. Adding tempo and valence helped express rhythm and emotional tone, but strong feature weights could also produce clusters of similar-energy songs.
 
-When I reduced the genre weight from 2.0 to 0.5, recommendations became less repetitive and more diverse. Genre stopped dominating the results, and mood and energy had a stronger influence, making the system feel more balanced.
+**What remains difficult?** Vague prompts and mixed moods can confuse keyword-based intent parsing. The system can also favor familiar genres or mood patterns because its catalog and rules are limited. A more robust evaluation would compare this pipeline with simpler baselines on a fixed set of labeled prompts, measuring relevance, diversity, and constraint violations.
 
-Adding tempo and valence made recommendations feel more accurate in terms of emotion and rhythm. However, I noticed that strong weights can still group songs into similar “energy clusters,” which reduces variety.
+## Project structure
 
-For different user types, the system works well when preferences are clear, but struggles with conflicting inputs. In those cases, it tends to average signals instead of properly resolving contradictions.
+| File | Responsibility |
+| --- | --- |
+| `src/intent_parser.py` | Convert free-text requests into preferences |
+| `src/planner_agent.py` | Choose a recommendation strategy |
+| `src/recommender.py` | Score candidate songs |
+| `src/playlist_builder.py` | Assemble and order the playlist |
+| `src/evaluator_agent.py` | Check quality and guide refinement |
+| `src/curator_agent.py` | Produce a readable playlist summary |
+| `src/main.py` | Run the interactive CLI |
+| `data/songs.csv` | Curated song catalog |
 
----
+## What I took away
 
-## Limitations and Risks
+The most interesting part was seeing how small changes in intent parsing or feature weights could change the result downstream. Building the pipeline in separate pieces made those decisions easier to inspect, challenge, and improve.
 
-The system is mostly rule-based, so it depends heavily on predefined keywords and weights. This makes it less flexible when users express feelings in unusual or nuanced ways. It can also over-represent moods or genres that are strongly encoded in the signal lists (like “chill” or “lofi”), which may bias results toward familiar patterns instead of diverse discovery.
 
-This type of recommender could be misused to overly reinforce a user’s emotional state (for example, continuously recommending sad or high-energy music without balance).
-To reduce this risk, constraints like mood diversity, energy balancing, and evaluation feedback loops are included. In a real system, additional safeguards like content diversity rules and user-controlled filters would help prevent emotional overfitting.
 
----
-
-## Reflection
-
-This project helped me understand how real recommendation systems are built as pipelines instead of a single AI model. I learned how important structured data, intermediate representations (like intent and plans), and feedback loops are for improving output quality.
-
-It also showed me that building AI systems is less about having a perfect model and more about designing good decision flows, handling uncertainty, and iterating through testing and evaluation.
-
-What surprised me most was how sensitive the system is to small changes in the intent parser. A few keywords can completely change the planner’s decision and final playlist style.
-
-It also stood out that even simple evaluation rules were enough to significantly improve playlist quality through iterative refinement.
-
-## Collaboration with AI (learning experience)
-
-AI was helpful in suggesting architectural improvements, especially in separating the system into modular agents (intent, planner, builder, evaluator, curator). It also helped clarify how real recommendation pipelines are structured in industry.
-
-However, some suggestions were too aggressive or incorrect for my current project scope. For example, it sometimes pushed for full LLM-based reasoning or embedding models, which would have added unnecessary complexity and broken the simplicity required for this project.
-
+  
 Overall, AI worked best as a design assistant and debugging guide, but I had to carefully filter suggestions to match the project goals and keep the system understandable and testable.
